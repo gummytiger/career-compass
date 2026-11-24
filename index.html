@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Career Compass — explore your next chapter</title>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <!-- No network access for scripts: everything loads from this site, and the app cannot make requests of its own. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <a class="brand" href="#/home"><span aria-hidden="true">✦</span> Career Compass</a>
+    <nav id="nav" aria-label="Sections"></nav>
+    <label class="theme-pick">Style <select id="theme" data-change="theme"><option value="classic">Classic</option><option value="mac84">Early Mac</option><option value="macos">macOS</option><option value="wrapped">Wrapped</option></select></label>
+  </header>
+  <main id="main" tabindex="-1"></main>
+  <footer class="foot">
+    <span>Your data stays in this browser. Nothing is uploaded or tracked.</span>
+    <span class="foot-actions">
+      <button class="link" data-action="export">Download backup</button>
+      <label class="link">Import a file<input type="file" accept="application/json" id="importFile" hidden></label>
+      <button class="link danger" data-action="resetAll">Reset everything</button>
+    </span>
+  </footer>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="userdata.js"></script>
+  <script src="scoring.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
