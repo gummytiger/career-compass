@@ -406,3 +406,18 @@ select:not([multiple]) {
 .res-head { margin-bottom: 1rem; }
 .res-gap { margin-top: 2rem; }
 h2.res-head { margin-top: 2.5rem; }
+
+/* Form rows: a label's text stays on one line, and a dropdown and a text box side by side are the same height */
+label.field > span { display: block; }
+label.field > select, label.field > input[type=text], label.field > input[type=url], label.field > input[type=date] { height: 2.4rem; box-sizing: border-box; }
+
+/* Résumé help: two separate tools on one page */
+.tool { margin-top: 2.25rem; }
+.tool + .tool { border-top: 1px solid var(--line); padding-top: 1.75rem; }
+.tool > .eyebrow + h2 { margin-top: 0; }
+.tool > h3 { margin-top: 1.75rem; }
+.eyebrow { margin: 0 0 .25rem; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+/* A fieldset's legend normally sits on its border; keep it inside the card instead */
+fieldset.card { min-width: 0; margin-inline: 0; }
+fieldset.card > legend { float: left; width: 100%; padding: 0; margin: 0 0 .75rem; }
+fieldset.card > legend + * { clear: both; }

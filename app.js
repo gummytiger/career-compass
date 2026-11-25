@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   var D = window.CC_DATA, S = window.CCScoring;
+  var U = CCUserData;
   var KEY = 'careerCompass.v1';
   var THEMES = ['classic', 'mac84', 'macos', 'wrapped'];
 
@@ -21,7 +22,7 @@
   /* ---------- state ---------- */
   function fresh() {
     return {
-      v: CCUserData.SCHEMA, lastBackup: null,
+      v: CCUserData.SCHEMA, lastBackup: null, searchStage: '',
       profile: clone(D.profile), prefilled: !!D.prefilled,
       guide: { step: 'discover', q: 0 }, theme: 'classic', prefs: clone(D.seedPrefs), custom: [], hidden: [], focus: [], lensRole: null,
       skills: {}, projects: {}, currentProject: null, weeklyHours: 5,
@@ -37,7 +38,7 @@
   }
   var state = load();
   var ui = { f: { sort: 'match', coding: 'any', client: 'any', finance: 'any', coord: 'any', coordExt: 'any', ready: 'any', family: 'any' },
-             moves: {}, mentor: { open: false, includePrefs: false, includeTracker: false }, editing: null, editApp: null, undo: null, focusId: null, projFilter: { onlyLens: true, source: 'any', coding: 'any' } };
+             rhRole: '', rhOther: '', rhEmployer: '', posting: '', moves: {}, mentor: { open: false, includePrefs: false, includeTracker: false }, editing: null, editApp: null, undo: null, focusId: null, projFilter: { onlyLens: true, source: 'any', coding: 'any' } };
   var toastTimer;
 
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('Could not save — browser storage is unavailable. Use Export JSON to keep your work.'); } }
@@ -113,8 +114,8 @@
   }
 
   /* ---------- views ---------- */
-  var NAV = [['guide', 'My journey'], ['home', 'Dashboard']];
-  var TOOLS = { explore: 'Explore paths', prefs: 'Preferences', readiness: 'Résumé readiness', projects: 'Projects', learning: 'Learning', plan: 'Plan & tracker', role: 'Path details' };
+  var NAV = [['guide', 'My journey'], ['readiness', 'Résumé help'], ['home', 'Dashboard']];
+  var TOOLS = { explore: 'Explore paths', prefs: 'Preferences', readiness: 'Résumé help', projects: 'Projects', learning: 'Learning', plan: 'Plan & tracker', role: 'Path details' };
 
   function taskGo(t, cls) {
     if (!t.go) return '';
@@ -183,7 +184,7 @@
       '<div class="grid cols3">' + top.map(function (r) { return roleCard(r, { compact: true }); }).join('') + '</div>' +
       progressCard() +
       '<h2>All tools</h2><div class="grid cols3">' +
-      [['#/explore', 'Explore paths', 'Compare paths side by side. Your chosen paths come first.', ''], ['#/readiness', 'Résumé readiness', 'See which skills your résumé shows.', 'soon'], ['#/plan', 'Plan & tracker', '30-day checklist and applications.', '']]
+      [['#/explore', 'Explore paths', 'Compare paths side by side. Your chosen paths come first.', ''], ['#/readiness', 'Résumé help', 'Find where your search is stalling and get prompts for your AI.', ''], ['#/plan', 'Plan & tracker', '30-day checklist and applications.', '']]
         .map(function (l) { return l[3] ? '<div class="card"><h3>' + l[1] + ' <span class="tag">Coming soon</span></h3><p class="muted small">' + l[2] + '</p></div>' : '<a class="card" style="text-decoration:none;color:inherit" href="' + l[0] + '"><h3>' + l[1] + '</h3><p class="muted small">' + l[2] + '</p></a>'; }).join('') + '</div>' + dataCard();
   }
 
@@ -311,7 +312,7 @@
       }).join('') + '</ol></aside></div>';
   }
 
-  function viewReadiness() {
+  function viewSkillCheck() {
     var role = byId(D.roles, lensId()), gaps = gapsFor(role), top = gaps.slice(0, 3);
     function gapCard(g) {
       var L = D.learning.filter(function (l) { return l.skills.indexOf(g.id) > -1 && l.careers.indexOf(role.id) > -1 && !l.optional; }).slice(0, 1);
@@ -322,7 +323,7 @@
         '<p class="small muted">Résumé evidence: add a bullet only after you’ve actually done the work.</p></div>';
     }
     var vers = D.resumeVersions.filter(function (v) { return v.for.indexOf(role.id) > -1; })[0] || D.resumeVersions[0];
-    return '<h1>Résumé readiness</h1><p class="lede">What your résumé shows today versus what the role usually asks for. “Not yet demonstrated” is different from “can’t do”.</p>' + roleSelect('Looking at') +
+    return '<p class="small muted">What your résumé shows today versus what the role usually asks for. “Not yet demonstrated” is different from “can’t do”.</p>' + roleSelect('Looking at') +
       '<h2>Top gaps for ' + esc(role.title) + '</h2>' + (top.length ? '<div class="grid cols2">' + top.map(gapCard).join('') + '</div>' : '<div class="card">Nothing flagged for this path.</div>') +
       (gaps.length > 3 ? '<details style="margin-top:1rem"><summary>Show the other ' + (gaps.length - 3) + '</summary><div class="grid cols2" style="margin-top:.75rem">' + gaps.slice(3).map(gapCard).join('') + '</div></details>' : '') +
       '<h2>Recover evidence from your internship</h2><div class="card"><p class="small muted">Answer privately; only add to your résumé what you can confirm. Never backdate or invent duties.</p><ul>' +
@@ -332,6 +333,157 @@
       '<details><summary>Example: truthful reframing of existing bullets</summary>' + D.bulletExamples.map(function (b) { return '<p class="small"><span class="muted">Before:</span> ' + esc(b.before) + '<br><strong>After:</strong> ' + esc(b.after) + '</p>'; }).join('') + '</details>' +
       '<details><summary>Possible future bullets — <span class="tag unv">proposed, not earned yet</span></summary><p class="small muted">Use only after the work is done and approved. Fill in [brackets] with actual facts.</p><ul class="small">' + D.futureBullets.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') + '</ul></details>' +
       '<label class="field">My résumé notes<textarea id="resumeNotes" data-change="resumeNotes">' + esc(state.resumeNotes) + '</textarea></label></div>';
+  }
+  /* ---------- Résumé help: where the search is stalling + prompts for her own AI ---------- */
+  var OUTCOME_OPTS = [['', 'How did it end?'], ['noReply', 'No reply'], ['auto', 'Automatic rejection email'], ['screen', 'Ended after recruiter screen'], ['interviews', 'Ended after interviews'], ['final', 'Ended after final round']];
+  var STAGE_ORDER = ['start', 'noReplies', 'screen', 'middle', 'final'];
+  var STAGES = {
+    start: { pick: 'I’m just starting, or I’m not sure yet', label: 'Just starting', area: 'Tailoring each application', text: 'The best use of your time right now is matching your résumé to each posting before you apply. Come back and pick another option once you’ve applied to a handful of roles.' },
+    noReplies: { pick: 'I apply, but mostly hear nothing or get automatic rejections', label: 'Mostly silence or automatic rejections', area: 'Résumé match and targeting', text: 'This is where the résumé matters most: match it to each posting’s wording, and check you’re aiming at true entry-level roles. Some automatic rejections come from questions a résumé can’t fix, like work authorization or location.' },
+    screen: { pick: 'I get recruiter calls, but they don’t go further', label: 'Stopping after the recruiter screen', area: 'Your story and résumé match', text: 'People are talking to you, but it stops after the first call. The résumé got you the call. Now the screen is about your story and whether it matches what the résumé promises.' },
+    middle: { pick: 'I get interviews, but stop before the final round', label: 'Stopping in the middle rounds', area: 'Interview skills', text: 'You’re passing the first screen but stopping in the middle rounds. That’s usually interview practice (behavioral or technical answers), not the résumé.' },
+    final: { pick: 'I reach final rounds, but no offer yet', label: 'Reaching final rounds, no offer yet', area: 'Standing out and strategy', text: 'Getting to the final round means the résumé is doing its job. The difference now is usually how you stand out, the stories you tell, and your follow-up.' }
+  };
+  var STAGE_PROMPTS = { start: ['recruiterEye', 'bullets'], noReplies: ['noReplies', 'recruiterEye', 'bullets'], screen: ['screen'], middle: ['middle'], final: ['final'] };
+  var PROMPT_INFO = {
+    noReplies: ['Why am I not getting replies?', 'Attach your résumé. Paste 2–3 postings you applied to.'],
+    recruiterEye: ['A recruiter’s 6-second skim', 'Attach your résumé.'],
+    bullets: ['Strengthen my bullets, honestly', 'Attach your résumé.'],
+    screen: ['Prepare for the recruiter screen', 'Attach your résumé. Add the posting if you have one.'],
+    middle: ['Practice the middle rounds', 'Attach your résumé. Add the posting if you have one.'],
+    final: ['Stand out in final rounds', 'Attach your résumé.']
+  };
+  // The role she is tailoring for: one of her chosen paths (default), another path, or a name she types.
+  function tailorRole() {
+    var v = ui.rhRole || (state.focus && state.focus[0]) || lensId();
+    if (v === '__other') return { role: null, name: ui.rhOther.trim() };
+    var r = byId(D.roles, v) || byId(D.roles, lensId());
+    return { role: r, name: r ? r.title : '' };
+  }
+  function roleOptions() {
+    var chosen = (state.focus || []).filter(function (id) { return byId(D.roles, id); }), cur = ui.rhRole || chosen[0] || lensId();
+    var opt = function (id, label) { return '<option value="' + esc(id) + '"' + (id === cur ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+    var rest = D.roles.filter(function (r) { return chosen.indexOf(r.id) < 0; });
+    return (chosen.length ? '<optgroup label="Your chosen paths">' + chosen.map(function (id) { return opt(id, byId(D.roles, id).title); }).join('') + '</optgroup>' : '') +
+      '<optgroup label="' + (chosen.length ? 'Other paths' : 'Paths') + '">' + rest.map(function (r) { return opt(r.id, r.title); }).join('') + '</optgroup>' +
+      '<optgroup label="Not on the list">' + opt('__other', 'Other (type the role name)') + '</optgroup>';
+  }
+  function oneOfStage(v) { return STAGE_ORDER.indexOf(v) > -1 ? v : ''; }
+  function pathsList() {
+    var ids = (state.focus && state.focus.length ? state.focus : [lensId()]).slice(0, 3);
+    return ids.map(function (id) { return byId(D.roles, id); }).filter(Boolean);
+  }
+  var PROMPT_RULES = ['RULES',
+    '- Use only what is actually in my résumé. Never invent experience, tools, numbers, dates or titles.',
+    '- When you cite evidence, quote my résumé’s exact words. If you can’t find evidence, say “not shown on the résumé”. That is different from “I can’t do it”.',
+    '- If a bullet would be stronger with a fact you don’t have, ask me a question instead of guessing.',
+    '- Be direct and specific. Put the changes that matter most first.',
+    '- Keep my résumé honest and easy for automatic screening: simple layout, standard section names, one page.'];
+  function promptContext() {
+    var ps = pathsList(), seen = {}, skills = [];
+    ps.forEach(function (p) { p.req.forEach(function (sid) { var b = byId(D.skills, sid); if (b && !seen[sid]) { seen[sid] = 1; skills.push(b.name); } }); });
+    return ['ABOUT ME', '- I’m a recent graduate looking for entry-level roles.', '- Paths I’m aiming for: ' + ps.map(function (p) { return p.title; }).join('; ') + '.',
+      skills.length ? '- Skills those paths usually ask for: ' + skills.slice(0, 12).join(', ') + '.' : ''].filter(Boolean);
+  }
+  function promptText(key) {
+    var f = U.funnel(state.apps), head = promptContext(), rules = PROMPT_RULES, lines;
+    if (key === 'tailor') {
+      var tr = tailorRole(), skillsFor = tr.role ? tr.role.req.map(function (sid) { var sk = byId(D.skills, sid); return sk && sk.name; }).filter(Boolean) : [];
+      lines = ['TASK: Tailor my résumé to one job.', '', 'THE JOB',
+        '- Role: ' + (tr.name || '[ROLE]'),
+        ui.rhEmployer.trim() ? '- Employer: ' + ui.rhEmployer.trim() : '',
+        skillsFor.length ? '- Skills this kind of role usually asks for: ' + skillsFor.join(', ') + '.' : '',
+        '- Posting text:', ui.posting ? ui.posting : '[PASTE THE FULL JOB POSTING HERE]', '',
+        'STEPS',
+        '1. List the 8–10 requirements and keywords that matter most in this posting, in order. Separate must-have from nice-to-have.',
+        '2. For each one, tell me whether my résumé shows it (quote it), partly shows it, or doesn’t.',
+        '3. Name my 3 biggest gaps against this posting. For each, say whether I can fix it honestly by rewording what I already did, or whether it’s a real gap.',
+        '4. Suggest specific edits: what to move up, reword (show before and after) and cut. Use the posting’s own wording only where it is true for me.',
+        '5. Flag anything that could trip an automatic screen (formatting, missing standard sections, date gaps, missing keywords) and any knockout questions the posting hints at (work authorization, location, degree, years of experience).',
+        '6. Give a fit verdict: strong, reasonable or a stretch. Tell me whether to apply and what to do if I do.',
+        '7. End with up to 3 questions about my experience whose answers could strengthen the résumé.'].filter(function (x) { return x !== ''; });
+    } else if (key === 'noReplies') {
+      lines = ['TASK: Work out why I’m getting few replies.', '', 'WHAT I’M SEEING',
+        '- I apply to roles but mostly hear nothing back, or get automatic rejections.',
+        f.applied >= 3 ? '- My tracker shows ' + f.applied + ' applications and ' + f.heard + ' that reached a real person.' : null,
+        '- I’ll paste 2–3 postings I applied to below this prompt.', '',
+        'STEPS',
+        '1. Check my résumé against those postings: does it use the same words for the same skills?',
+        '2. Check my level: am I applying to true entry-level roles, or ones that really need 2–3+ years?',
+        '3. Check for automatic-screening problems: layout, section names, dates, anything that may not read correctly.',
+        '4. Do a 6-second skim of the top third of my résumé. What would a recruiter take away?',
+        '5. Give me the 3 most likely causes, ranked, with evidence from my résumé. Say which ones a résumé can’t fix (work authorization, location, a very crowded posting).',
+        '6. Tell me what to change this week, and what to stop doing.'];
+    } else if (key === 'recruiterEye') {
+      lines = ['TASK: Read my résumé the way a busy recruiter does.', '',
+        '1. In 6 seconds, what do you take away about me? Describe it in one sentence, and say which role you’d put me in.',
+        '2. Does that match the paths I’m aiming for? If not, what’s sending the wrong signal?',
+        '3. What are the 3 strongest things on the page, and are they easy to find?',
+        '4. What would a recruiter ask about or doubt? (gaps, unrelated major, thin experience, vague claims)',
+        '5. What should I cut, shorten or move?'];
+    } else if (key === 'bullets') {
+      lines = ['TASK: Strengthen my bullets without making anything up.', '',
+        '1. Pick the 5 weakest bullets for the paths I’m aiming for (vague, task-only, no result).',
+        '2. For each, ask me 1–2 questions about what I actually did and what changed because of it. Wait for my answers before rewriting.',
+        '3. Then show a before and after. Only use facts I gave you. Mark anything that still needs a real number with [brackets] for me to fill in.',
+        '4. Tell me which skills from the list above each rewritten bullet now shows.'];
+    } else if (key === 'screen') {
+      lines = ['TASK: Get me ready for the recruiter screen.', '', 'WHAT I’M SEEING',
+        '- I get recruiter calls, but they don’t move forward.',
+        f.applied >= 3 ? '- My tracker shows ' + f.applied + ' applications, ' + f.heard + ' reaching a real person.' : null, '',
+        'STEPS',
+        '1. Write a 60-second “tell me about yourself” for my target role, using only true facts from my résumé.',
+        '2. Give me a simple way to answer “why this role” and “why this company”.',
+        '3. Prepare me for the standard screen questions: salary expectations, work authorization, start date, and what I know about the company. Ask me for any facts you need.',
+        '4. Flag places where my résumé will raise questions (gaps, a different major, short stints) and suggest honest answers.',
+        '5. Then run a mock screen: ask one question at a time, wait for my answer, and give me feedback before the next question.'];
+    } else if (key === 'middle') {
+      lines = ['TASK: Help me practice for the middle interview rounds.', '', 'WHAT I’M SEEING',
+        '- I get interviews, but I stop before the final round.', '',
+        'STEPS',
+        '1. Tell me which interview types are usual for my paths (behavioral, technical or case, hiring manager).',
+        '2. List what each line of my résumé invites them to ask about.',
+        '3. Help me prepare 6 stories from my real experience, each with the situation, what I did and the result.',
+        '4. Run a practice interview: one question at a time, wait for my answer, then score it 1–5 on structure, specifics and relevance, and show a stronger version that uses only my real experience.',
+        '5. After 10 questions, tell me the 3 patterns I most need to fix.'];
+    } else {
+      lines = ['TASK: Help me stand out in final rounds.', '', 'WHAT I’M SEEING',
+        '- I reach final rounds, but I haven’t received an offer yet.', '',
+        'STEPS',
+        '1. Ask me about my last final round, one question at a time: who interviewed me, what they asked, and where I felt weak.',
+        '2. Explain what usually decides between similar candidates at this stage, and how I can stand out from other recent graduates with my background.',
+        '3. Be honest that I may not be able to know the real reason for a rejection.',
+        '4. Write me a short thank-you and follow-up message, and a polite way to ask for feedback after a no.',
+        '5. Give me the basics of negotiating if I get an offer.'];
+    }
+    return head.concat([''], rules, [''], lines.filter(function (x) { return x !== null; }), ['', 'I will attach my résumé.']).join('\n').replace(/\n- \n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  }
+  function promptCard(key) {
+    var info = key === 'tailor' ? ['Tailor my résumé to one job', 'Attach your résumé.'] : PROMPT_INFO[key];
+    return '<article class="card stack"><h3>' + esc(info[0]) + '</h3><p class="small muted">' + esc(info[1]) + '</p>' +
+      '<details><summary>Preview the prompt</summary><textarea readonly rows="14" aria-label="Prompt preview">' + esc(promptText(key)) + '</textarea></details>' +
+      '<div><button class="btn small" data-action="copyPrompt" data-id="' + key + '">Copy prompt</button></div></article>';
+  }
+  function viewReadiness() {
+    var f = U.funnel(state.apps), chosen = state.searchStage, stage = chosen || 'start', S0 = STAGES[stage];
+    var hint = { noReplies: 1, screen: 1, middle: 1, final: 1 }[f.stage] && f.stage !== chosen ? f.stage : '';
+    var more = ['noReplies', 'recruiterEye', 'bullets', 'screen', 'middle', 'final'].filter(function (k) { return STAGE_PROMPTS[stage].indexOf(k) < 0; });
+    return '<h1>Résumé help</h1><p class="lede">Find where your job search is stalling, then get a ready-made prompt for Claude, ChatGPT or Gemini. You attach your résumé in the chat, so it never passes through this app.</p>' +
+      '<section class="tool"><p class="eyebrow">For your whole search</p><h2>How is your search going?</h2><p class="small muted">Use this when you’ve been applying for a while and want to know what to work on.</p><fieldset class="card stack" style="border:0"><legend class="small muted">Pick the one that fits best. You can change it any time.</legend>' +
+      STAGE_ORDER.map(function (k) { return '<label class="check"><input type="radio" name="searchStage" value="' + k + '" data-change="searchStage"' + (chosen === k ? ' checked' : '') + '><span>' + esc(STAGES[k].pick) + '</span></label>'; }).join('') +
+      (chosen ? '<div class="note"><strong>' + esc(S0.label) + '.</strong> Work on: <strong>' + esc(S0.area) + '.</strong> ' + esc(S0.text) + '</div>' : '') +
+      (hint ? '<p class="small muted">Your tracker points to “' + esc(STAGES[hint].pick) + '”. <button class="link" data-action="useStage" data-id="' + hint + '">Use this</button></p>' : '') + '</fieldset>' +
+      '<h3>' + (chosen ? 'Prompts for “' + esc(S0.label) + '”' : 'Prompts to start with') + '</h3><p class="small muted">' + (chosen ? 'These change with your answer above.' : 'Pick an option above to see prompts for that situation.') + '</p><div class="grid cols2">' + STAGE_PROMPTS[stage].map(promptCard).join('') + '</div>' +
+      '<details style="margin-top:1rem"><summary>More prompts</summary><div class="grid cols2" style="margin-top:.75rem">' + more.map(promptCard).join('') + '</div></details></section>' +
+      '<section class="tool"><p class="eyebrow">For one job</p><h2>Tailor your résumé to a specific job</h2><p class="small muted">Use this before each application. It works at any stage.</p><div class="card stack">' +
+      '<div class="grid cols2"><label class="field"><span>What kind of role is it?</span><select id="rhRole" data-change="uiRole">' + roleOptions() + '</select></label>' +
+      '<label class="field"><span>Employer <span class="small muted">(optional)</span></span><input type="text" id="rhEmployer" value="' + esc(ui.rhEmployer) + '" data-change="uiEmployer" maxlength="100"></label></div>' +
+      (ui.rhRole === '__other' ? '<label class="field" style="max-width:30rem"><span>Role name</span><input type="text" id="rhOther" value="' + esc(ui.rhOther) + '" data-change="uiOther" maxlength="100" placeholder="For example: Operations Analyst"></label>' : '') +
+      '<label class="field"><span>Paste the job posting text <span class="small muted">(assistants often can’t open links; this isn’t saved)</span></span><textarea id="rhPosting" rows="5" data-change="uiPosting">' + esc(ui.posting) + '</textarea></label>' +
+      '<details><summary>Preview the prompt</summary><textarea readonly rows="16" aria-label="Prompt preview">' + esc(promptText('tailor')) + '</textarea></details>' +
+      '<div><button class="btn" data-action="copyPrompt" data-id="tailor">Copy prompt</button> <span class="small muted">Then paste it into your AI and attach your résumé.</span></div></div></section>' +
+      '<div class="note small" style="margin-top:1.5rem"><strong>Before you paste:</strong> your résumé and any posting go to the AI service you choose, not to this app. Remove details you don’t want to share (such as your home address or phone number). The AI can be wrong, so check every suggestion against what is true for you, and only keep edits you can back up in an interview.</div>' +
+      '<details style="margin-top:1.5rem"><summary>Skill check: what your paths ask for (optional)</summary><div style="margin-top:.75rem">' + viewSkillCheck() + '</div></details>';
   }
   function skillEditor(sk) {
     return '<div class="row"><label class="small">Status ' + select('sk-' + sk.id, Object.keys(SKILL_STATES).map(function (k) { return [k, SKILL_STATES[k]]; }), sk.state, 'data-change="skillState" data-id="' + sk.id + '"') + '</label></div>' +
@@ -432,11 +584,11 @@
     if (ui.editApp === i) {
       var f = function (k, label, type, req) { return '<label class="field">' + label + '<input type="' + (type || 'text') + '" id="ep-' + k + '" value="' + esc(a[k] || '') + '"' + (req ? ' required' : '') + '></label>'; };
       return '<form class="card stack" data-submit="saveApp" data-i="' + i + '"><h3>Edit application</h3><div class="grid cols3">' + f('employer', 'Employer*', 'text', 1) + f('title', 'Title*', 'text', 1) + f('url', 'Link', 'url') +
-        '<label class="field">Status' + select('ep-status', APP_STATUS.map(function (s) { return [s, s]; }), a.status, '') + '</label>' + appExtra('ep', a) + '</div>' +
+        '<label class="field">Status' + select('ep-status', APP_STATUS.map(function (s) { return [s, s]; }), a.status, '') + '</label><label class="field">How did it end? <span class="small muted">(for closed ones)</span>' + select('ep-outcome', OUTCOME_OPTS, a.outcome || '', '') + '</label>' + appExtra('ep', a) + '</div>' +
         '<div class="row"><button class="btn">Save</button><button type="button" class="link" data-action="cancelEdit">Cancel</button></div></form>';
     }
     return '<div class="card stack"><div class="row between"><strong>' + esc(a.employer) + ' — ' + esc(a.title) + '</strong>' +
-      select('as-' + i, APP_STATUS.map(function (s) { return [s, s]; }), a.status, 'data-change="appStatus" data-i="' + i + '" aria-label="Status"') + '</div>' +
+      select('as-' + i, APP_STATUS.map(function (s) { return [s, s]; }), a.status, 'data-change="appStatus" data-i="' + i + '" aria-label="Status"') + (a.status === 'Closed' ? select('ao-' + i, OUTCOME_OPTS, a.outcome || '', 'data-change="appOutcome" data-i="' + i + '" aria-label="How it ended"') : '') + '</div>' +
       '<p class="small muted">' + [a.location, a.elig, a.experience, a.coding && 'Coding: ' + a.coding, a.verified ? 'Verified ' + a.verified : 'Not yet verified'].filter(Boolean).map(esc).join(' · ') + '</p>' +
       (a.url ? '<p class="small"><a href="' + esc(/^https?:/i.test(a.url) ? a.url : '#') + '" target="_blank" rel="noopener noreferrer">Official posting</a></p>' : '') +
       (a.next ? '<p class="small"><strong>Next:</strong> ' + esc(a.next) + '</p>' : '') + (a.notes ? '<p class="small">' + esc(a.notes) + '</p>' : '') +
@@ -498,9 +650,8 @@
       }).join('') + '</div><div class="navrow"><div class="nl"><button class="link" data-action="gStep" data-id="narrow">← Change paths</button></div><div class="nc"></div><div class="nr"><button class="btn" data-action="gImprove" data-id="">Start improving →</button></div></div>';
     } else {
       html += '<h1>Update your résumé, then recheck</h1><p class="lede">Add only what you really did. Then see where you stand.</p><div class="cards3">' +
-        '<article class="card"><h2>1. Résumé readiness</h2><p>See which skills your résumé shows and which are still missing. <span class="tag">Coming soon</span></p></article>' +
-        '<article class="card"><h2>2. Résumé studio</h2><p>Recruiter-style check, tone, and style. <span class="tag">Coming soon</span></p></article>' +
-        '<article class="card"><h2>3. Keep applying</h2><p>Track roles you’ve verified.</p><a class="btn ghost" href="#/plan">Open tracker</a></article></div>' +
+        '<article class="card"><h2>Résumé help</h2><p>Find where your search is stalling, and get prompts to improve your résumé.</p>' + '<a class="btn ghost" href="#/readiness">Open résumé help</a>' + '</article>' +
+        '<article class="card"><h2>Keep applying</h2><p>Track roles you’ve verified.</p><a class="btn ghost" href="#/plan">Open tracker</a></article></div>' +
         '<div class="navrow"><div class="nl"><button class="link" data-action="gStep" data-id="improve">← Back to improving</button></div></div>';
     }
     return html;
@@ -554,7 +705,13 @@
       case 'mentorOpt': ui.mentor[el.dataset.key] = el.checked; ui.mentor.open = true; ui.focusId = null; break;
       case 'learnStatus': state.learning[id] = v; save(); break;
       case 'task': if (el.checked) state.tasks[id] = true; else delete state.tasks[id]; save(); break;
-      case 'appStatus': state.apps[+el.dataset.i].status = v; save(); return;
+      case 'appStatus': var wasClosed = state.apps[+el.dataset.i].status === 'Closed'; state.apps[+el.dataset.i].status = v; save(); if (wasClosed || v === 'Closed') break; return;
+      case 'appOutcome': state.apps[+el.dataset.i].outcome = v; save(); return;
+      case 'uiRole': ui.rhRole = v; break;
+      case 'uiOther': ui.rhOther = v.slice(0, 100); break;
+      case 'uiEmployer': ui.rhEmployer = v.slice(0, 100); break;
+      case 'uiPosting': ui.posting = v.slice(0, 20000); break;
+      case 'searchStage': state.searchStage = oneOfStage(v); save(); break;
     }
     render();
   });
@@ -568,7 +725,7 @@
     }
     if (f === 'saveApp') {
       var ix = +e.target.dataset.i, ge = function (k) { return ((document.getElementById('ep-' + k)) || {}).value || ''; }, cur = state.apps[ix];
-      if (cur) { ['employer', 'title', 'url'].forEach(function (k) { cur[k] = ge(k).trim(); }); ['status', 'location', 'elig', 'experience', 'coding', 'verified', 'next', 'notes'].forEach(function (k) { cur[k] = ge(k); }); }
+      if (cur) { ['employer', 'title', 'url'].forEach(function (k) { cur[k] = ge(k).trim(); }); ['status', 'outcome', 'location', 'elig', 'experience', 'coding', 'verified', 'next', 'notes'].forEach(function (k) { cur[k] = ge(k); }); }
       ui.editApp = null; save(); render(); toast('Saved.'); return;
     }
     if (f === 'addApp') {
@@ -633,6 +790,10 @@
       case 'copySummary':
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(summaryText()).then(function () { toast('Summary copied.'); }, function () { toast('Couldn’t copy. Use Download instead.'); });
         else toast('Couldn’t copy. Use Download instead.'); return;
+      case 'useStage': state.searchStage = oneOfStage(id); save(); render(); return;
+      case 'copyPrompt':
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(promptText(id)).then(function () { toast('Prompt copied. Paste it into your AI and attach your résumé.'); }, function () { toast('Couldn’t copy. Open the preview and copy it yourself.'); });
+        else toast('Couldn’t copy. Open the preview and copy it yourself.'); return;
       case 'dlSummary': download('career-compass-summary-' + new Date().toISOString().slice(0, 10) + '.txt', summaryText(), 'text/plain'); toast('Summary downloaded.'); return;
       case 'resetAll':
         if (!confirm('Erase ALL your answers, notes, tracker entries and progress in this browser? Consider exporting first. You can undo right after.')) return;

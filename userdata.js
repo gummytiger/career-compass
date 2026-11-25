@@ -11,7 +11,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var SCHEMA = 2;                       // bump when the SHAPE of saved data changes, and add a step to migrate()
+  var SCHEMA = 3;                       // bump when the SHAPE of saved data changes, and add a step to migrate()
   var MAX_FILE_CHARS = 2000000;
   var STEPS = ['discover', 'narrow', 'build', 'improve', 'apply'];
   var THEMES = ['classic', 'mac84', 'macos', 'wrapped'];
@@ -19,6 +19,8 @@
   var PROJ_STATUS = ['idea', 'proposed', 'approved', 'inProgress', 'completed'];
   var LEARN_STATUS = ['notStarted', 'inProgress', 'done'];
   var APP_STATUS = ['To verify', 'Saved', 'Applied', 'Interviewing', 'Offer', 'Closed'];
+  var OUTCOMES = ['', 'noReply', 'auto', 'screen', 'interviews', 'final'];   // how a closed application ended
+  var SEARCH_STAGES = ['', 'start', 'noReplies', 'screen', 'middle', 'final'];   // how she says her search is going
   var ID_RE = /^(?!__proto__$|constructor$|prototype$)[A-Za-z0-9_-]{1,60}$/;   // also blocks prototype-pollution keys
 
   function str(v, max) { return (typeof v === 'string' ? v : v == null ? '' : String(v)).slice(0, max || 500); }
@@ -39,7 +41,8 @@
   function migrate(raw) {
     var s = isObj(raw) ? raw : {};
     var v = Number(s.v) || 1;
-    // v1 → v2: added lastBackup (nothing else changed shape). Add future steps here, in order.
+    // v1 → v2: added lastBackup. v2 → v3: applications can record how they ended (`outcome`); old ones just have none.
+    // Add future steps here, in order.
     if (v < 2) s.lastBackup = s.lastBackup || null;
     s.v = SCHEMA;
     return s;
@@ -90,13 +93,44 @@
     s.learning = {}; eachId(r.learning, function (k, v2) { s.learning[k] = oneOf(v2, LEARN_STATUS, 'notStarted'); });
     s.tasks = {}; eachId(r.tasks, function (k, v2) { if (v2) s.tasks[k] = true; });
     s.apps = (Array.isArray(r.apps) ? r.apps : []).slice(0, 500).filter(isObj).map(function (a) {
-      var o = { employer: str(a.employer, 200), title: str(a.title, 200), url: str(a.url, 500), status: oneOf(a.status, APP_STATUS, 'Saved') };
+      var o = { employer: str(a.employer, 200), title: str(a.title, 200), url: str(a.url, 500), status: oneOf(a.status, APP_STATUS, 'Saved'), outcome: oneOf(a.outcome, OUTCOMES, '') };
       ['location', 'elig', 'experience', 'coding', 'verified', 'next'].forEach(function (k) { o[k] = str(a[k], 300); });
       o.notes = str(a.notes, 3000); return o;
     });
     s.resumeNotes = str(r.resumeNotes, 10000);
+    s.searchStage = oneOf(r.searchStage, SEARCH_STAGES, '');
     s.lastBackup = typeof r.lastBackup === 'string' && !isNaN(Date.parse(r.lastBackup)) ? r.lastBackup : null;
     return s;
+  }
+
+  /**
+   * Where her applications are stalling, from the tracker alone (no private text is read).
+   * Returns counts plus a `stage`: tooEarly | noReplies | screen | middle | final | mixed.
+   * Small samples are never over-read: under 8 applications it says tooEarly.
+   */
+  function funnel(apps) {
+    var f = { applied: 0, waiting: 0, active: 0, offer: 0, noReply: 0, auto: 0, screen: 0, interviews: 0, final: 0, unrecorded: 0 };
+    (apps || []).forEach(function (a) {
+      if (['Applied', 'Interviewing', 'Offer', 'Closed'].indexOf(a.status) < 0) return;
+      f.applied++;
+      if (a.status === 'Applied') f.waiting++;
+      else if (a.status === 'Interviewing') f.active++;
+      else if (a.status === 'Offer') f.offer++;
+      else if (a.outcome && own(f, a.outcome)) f[a.outcome]++;
+      else f.unrecorded++;
+    });
+    f.heard = f.active + f.offer + f.screen + f.interviews + f.final;     // reached a real person
+    var stage = 'tooEarly';
+    if (f.applied >= 8) {
+      if (f.heard / f.applied < 0.15) stage = 'noReplies';
+      else {
+        var order = ['screen', 'interviews', 'final'], best = null;
+        order.forEach(function (k) { if (f[k] >= 2 && (best === null || f[k] > f[best])) best = k; });
+        stage = best === 'screen' ? 'screen' : best === 'interviews' ? 'middle' : best === 'final' ? 'final' : 'mixed';
+      }
+    }
+    f.stage = stage;
+    return f;
   }
 
   /** What gets written to a backup file. */
@@ -159,6 +193,8 @@
     else {
       var counts = {}; apps.forEach(function (a) { counts[a.status] = (counts[a.status] || 0) + 1; });
       L.push('- ' + apps.length + ' logged: ' + Object.keys(counts).map(function (k) { return counts[k] + ' ' + k.toLowerCase(); }).join(', '));
+      var fu = funnel(apps);
+      if (fu.applied) L.push('- Of ' + fu.applied + ' applied: ' + fu.heard + ' reached a real person; ' + fu.noReply + ' no reply, ' + fu.auto + ' automatic rejection, ' + fu.waiting + ' still waiting');
       if (opts.includeTracker) apps.forEach(function (a) { L.push('  - ' + a.employer + ': ' + a.title + ' (' + a.status + ')'); });
     }
     L.push('');
@@ -171,5 +207,5 @@
     return L.join('\n');
   }
 
-  return { SCHEMA: SCHEMA, MAX_FILE_CHARS: MAX_FILE_CHARS, migrate: migrate, sanitize: sanitize, envelope: envelope, parseImport: parseImport, mentorSummary: mentorSummary };
+  return { SCHEMA: SCHEMA, MAX_FILE_CHARS: MAX_FILE_CHARS, migrate: migrate, funnel: funnel, OUTCOMES: OUTCOMES, sanitize: sanitize, envelope: envelope, parseImport: parseImport, mentorSummary: mentorSummary };
 });

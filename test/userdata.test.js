@@ -9,7 +9,7 @@ const ctx = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../data.js'), 'utf8'), ctx);
 const D = ctx.window.CC_DATA;
 const fresh = () => ({
-  v: U.SCHEMA, lastBackup: null, profile: JSON.parse(JSON.stringify(D.profile)), prefilled: false,
+  v: U.SCHEMA, lastBackup: null, searchStage: '', profile: JSON.parse(JSON.stringify(D.profile)), prefilled: false,
   guide: { step: 'discover', q: 0 }, theme: 'classic', prefs: JSON.parse(JSON.stringify(D.seedPrefs)), custom: [], hidden: [], focus: [],
   lensRole: null, skills: {}, projects: {}, currentProject: null, weeklyHours: 5, learning: {}, tasks: {}, apps: [], resumeNotes: '', compare: []
 });
@@ -22,7 +22,7 @@ t('a valid state survives a round trip unchanged', () => {
   const s = fresh();
   s.focus = [D.roles[0].id, D.roles[1].id]; s.prefs.coding = { desired: 2, importance: 3, constraint: 'avoid', source: 'my note' };
   s.skills.excel = { state: 'demonstrated', note: 'note' }; s.projects[D.projects[0].id] = { status: 'inProgress', reflection: { energized: 'a', drained: 'b', learned: 'c' } };
-  s.learning[D.learning[0].id] = 'done'; s.apps = [{ employer: 'E', title: 'T', url: 'https://x.test', status: 'Applied', location: '', elig: '', experience: '', coding: '', verified: '', next: '', notes: 'n' }];
+  s.learning[D.learning[0].id] = 'done'; s.apps = [{ employer: 'E', title: 'T', url: 'https://x.test', status: 'Applied', outcome: '', location: '', elig: '', experience: '', coding: '', verified: '', next: '', notes: 'n' }];
   s.tasks.a1 = true; s.lastBackup = '2026-11-24T10:00:00.000Z';
   assert.deepEqual(U.sanitize(JSON.parse(JSON.stringify(s)), fresh(), D), s);
 });
@@ -88,5 +88,42 @@ t('shipped code contains no emails, phone numbers or network calls', () => {
     assert(!/\(?\b\d{3}\)?[-. ]\d{3}[-. ]\d{4}\b/.test(src), f + ' contains a phone number');
     assert(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|EventSource|importScripts/.test(src.replace(/connect-src/g, '')), f + ' makes network calls');
   });
+});
+t('the self-reported search stage is kept when valid and dropped when not', () => {
+  assert.equal(U.sanitize({ searchStage: 'screen' }, fresh(), D).searchStage, 'screen');
+  assert.equal(U.sanitize({ searchStage: '<script>' }, fresh(), D).searchStage, '');
+});
+const mk = (status, outcome) => ({ status, outcome });
+t('application outcome is kept when valid and dropped when not', () => {
+  const s = U.sanitize({ apps: [{ employer: 'A', title: 'B', status: 'Closed', outcome: 'auto' }, { employer: 'C', title: 'D', status: 'Closed', outcome: 'hacked' }] }, fresh(), D);
+  assert.equal(s.apps[0].outcome, 'auto'); assert.equal(s.apps[1].outcome, '');
+});
+t('a schema-2 file upgrades: applications get an empty outcome', () => {
+  const s = U.sanitize({ v: 2, apps: [{ employer: 'A', title: 'B', status: 'Applied' }] }, fresh(), D);
+  assert.equal(s.v, U.SCHEMA); assert.equal(s.apps[0].outcome, '');
+});
+t('funnel: fewer than 8 applications is "too early", never a verdict', () => {
+  assert.equal(U.funnel([]).stage, 'tooEarly');
+  assert.equal(U.funnel(Array(7).fill(mk('Closed', 'auto'))).stage, 'tooEarly');
+});
+t('funnel: Saved and To verify are not counted as applied', () => {
+  const f = U.funnel([mk('Saved'), mk('To verify'), mk('Applied')]);
+  assert.equal(f.applied, 1); assert.equal(f.waiting, 1);
+});
+t('funnel: many applications and almost no replies points at the résumé / targeting', () => {
+  const apps = Array(10).fill(mk('Closed', 'auto')).concat([mk('Applied')]);
+  assert.equal(U.funnel(apps).stage, 'noReplies');
+});
+t('funnel: stalls are matched to the stage where most applications end', () => {
+  const base = Array(5).fill(mk('Closed', 'noReply'));
+  assert.equal(U.funnel(base.concat(Array(3).fill(mk('Closed', 'screen')))).stage, 'screen');
+  assert.equal(U.funnel(base.concat(Array(3).fill(mk('Closed', 'interviews')))).stage, 'middle');
+  assert.equal(U.funnel(base.concat(Array(3).fill(mk('Closed', 'final')))).stage, 'final');
+  assert.equal(U.funnel(base.concat([mk('Closed', 'screen'), mk('Closed', 'interviews'), mk('Closed', 'final')])).stage, 'mixed');
+});
+t('mentor summary shows funnel counts but never employer names unless chosen', () => {
+  const st = fresh(); st.apps = [{ employer: 'SECRETCO', title: 'SECRETROLE', status: 'Closed', outcome: 'auto' }];
+  const txt = U.mentorSummary(st, D, {}, {});
+  assert(/1 automatic rejection/.test(txt)); assert(!/SECRETCO|SECRETROLE/.test(txt));
 });
 console.log('\n' + n + ' tests passed');

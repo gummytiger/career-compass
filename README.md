@@ -19,7 +19,7 @@ node test/userdata.test.js
 Covers ranking edge cases (all unknown, all neutral, hard avoid / must-have, preference changes, importance weights, custom activities) and seed-data integrity (every cross-reference resolves).
 
 ## What's in it
-Home · Explore (filters, compare up to 3) · Role detail · Preferences (live re-ranking with "why") · Readiness (top 2–3 gaps, résumé versions, truthful reframing) · Projects (real-business hypotheticals + public-data alternatives, one current project, reflection) · Learning · Plan (30-day checklist, tracker, search links, watchlist).
+Home · Explore (filters, compare up to 3) · Role detail · Preferences (live re-ranking with "why") · Résumé help (tracker funnel → where the search is stalling → copy-ready prompts for your own AI; skill check tucked below) · Projects (real-business hypotheticals + public-data alternatives, one current project, reflection) · Learning · Plan (30-day checklist, tracker, search links, watchlist).
 
 ## How ranking works (`scoring.js`)
 - Role attributes (1–5 per activity), your interest (1–5 or Unsure), and résumé readiness are **kept separate**.
